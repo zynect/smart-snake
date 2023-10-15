@@ -1,3 +1,5 @@
+# type: ignore
+
 # Welcome to
 # __________         __    __  .__                               __
 # \______   \_____ _/  |__/  |_|  |   ____   ______ ____ _____  |  | __ ____
@@ -10,16 +12,14 @@
 # To get you started we've included code to prevent your Battlesnake from moving backwards.
 # For more info see docs.battlesnake.com
 
+import os.path
 import random
 import typing
 import vowpalwabbit
-import os.path
 
-#import matplotlib.pyplot as plt
-
-vw = None
-previous_action = None
-previous_game_state = None
+vw = None  # The Vowpal Wabbit model
+previous_action = None  # The action the model took last turn
+previous_game_state = None  # The dictionary that contains the game state from last turn
 
 
 # info is called when you create your Battlesnake on play.battlesnake.com
@@ -29,11 +29,11 @@ def info() -> typing.Dict:
   print("INFO")
 
   return {
-    "apiversion": "1",
-    "author": "zynect",
-    "color": "#777777",
-    "head": "shades",
-    "tail": "comet",
+      "apiversion": "1",
+      "author": "zynect",
+      "color": "#777777",
+      "head": "shades",
+      "tail": "comet",
   }
 
 
