@@ -3,6 +3,7 @@
 __pycache__/
 .config/
 .git/
+.pythonlibs/
 .replit
 venv
 replit.nix
