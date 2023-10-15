@@ -1,0 +1,11 @@
+*.DS_Store
+*.pyc
+__pycache__/
+.config/
+.git/
+.replit
+venv
+replit.nix
+pyproject.toml
+poetry.lock
+snake.model
