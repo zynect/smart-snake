@@ -21,6 +21,13 @@ vw = None  # The Vowpal Wabbit model
 previous_action = None  # The action the model took last turn
 previous_game_state = None  # The dictionary that contains the game state from last turn
 
+# Hyperparameters
+basic_reward = -1  # Vowpal Wabbit has the reward as negative and loss as positive
+game_over_loss = 100
+food_reward = -5
+epsilon = 0.001
+learning_rate = 0.3
+
 
 # info is called when you create your Battlesnake on play.battlesnake.com
 # and controls your Battlesnake's appearance
@@ -42,7 +49,8 @@ def start(game_state: typing.Dict):
   global vw, previous_action, previous_game_state
 
   if vw == None:
-    workspace = "--cb_explore_adf --epsilon 0.1 -l 0.5"
+    workspace = "--cb_explore_adf --epsilon {} -l {}".format(
+        epsilon, learning_rate)
 
     if os.path.isfile("snake.model"):
       workspace += " -i snake.model"
@@ -61,7 +69,7 @@ def start(game_state: typing.Dict):
 def end(game_state: typing.Dict):
   global vw
 
-  learn(["up", "down", "left", "right"], 100)
+  learn(["up", "down", "left", "right"], game_over_loss)
   vw.save("snake.model")
 
   print("GAME OVER\n")
@@ -74,8 +82,13 @@ def move(game_state: typing.Dict) -> typing.Dict:
   global vw, previous_action, previous_game_state
 
   actions = ["up", "down", "left", "right"]
-  # VowpalWabbit uses postive values to indicate loss, so negative values are the reward
-  learn(actions, -1)
+
+  # Also give the reward for the last move, since we now know the snake hasn't died
+  cost = basic_reward
+  if previous_game_state != None and len(game_state["you"]["body"]) > len(
+      previous_game_state["you"]["body"]):
+    cost = food_reward
+  learn(actions, cost)
 
   action = get_action(game_state, actions)
   next_move, prob = action
@@ -100,7 +113,6 @@ def learn(actions, cost):
   vw_format = to_vw_example_format(previous_game_state, actions,
                                    (previous_move, cost, prob))
   print(vw_format)
-  #vw_format = vw.parse(vw_format, vowpalwabbit.LabelType.CONTEXTUAL_BANDIT)
   vw.learn(vw_format)
 
 
@@ -108,15 +120,13 @@ def to_vw_example_format(game_state, actions, cb_label=None):
   board = game_state["board"]
   example_string = ""
 
-  #example_string = get_shared_features(game_state)
-
   if cb_label is not None:
     chosen_action, cost, prob = cb_label
 
   grid = get_grid(game_state)
   x = game_state["you"]["head"]["x"]
   y = game_state["you"]["head"]["y"]
-  
+
   for action in actions:
     if cb_label is not None and action == chosen_action:
       example_string += f"{action}:{cost}:{prob} "
@@ -136,28 +146,7 @@ def get_val_from_action(direction, x, y, grid):
   if direction == "left":
     return get_val_from_grid(x - 1, y, grid)
 
-  raise Exception("INVALID DIRECTION") 
-
-
-# Returns a string that includes all shared features that we want to give the model
-def get_shared_features(game_state):
-  # Add board size features
-  example_string = "shared |"
-  example_string += " height={} width={} ".format(board["height"],
-                                                  board["width"])
-  # Add snake location features
-  for snake in board["snakes"]:
-    length = len(snake['body'])
-    owner = "Your" if snake['id'] == game_state['you']['id'] else "Enemy"
-
-    for i in range(length):
-      x = snake['body'][i]['x']
-      y = snake['body'][i]['y']
-      body = "Head" if i == 0 else "Body"
-      example_string += f"{owner}{body}{i}={x}x{y} "
-
-  example_string += "\n"
-  return example_string
+  raise Exception("INVALID DIRECTION")
 
 
 def get_action(context, actions):
