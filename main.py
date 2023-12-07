@@ -41,14 +41,17 @@ def info() -> typing.Dict:
 def start(game_state: typing.Dict):
   global vw, previous_action, previous_game_state
 
-  workspace = "--cb_explore_adf --epsilon 0.1 -l 0.2"
-  if os.path.isfile("snake.model"):
-    workspace += " -i snake.model"
-    print("Using existing model")
-  else:
-    print("Making new model")
+  if vw == None:
+    workspace = "--cb_explore_adf --epsilon 0.1 -l 0.5"
 
-  vw = vowpalwabbit.Workspace(workspace, quiet=False)
+    if os.path.isfile("snake.model"):
+      workspace += " -i snake.model"
+      print("Using existing model")
+    else:
+      print("Making new model")
+
+    vw = vowpalwabbit.Workspace(workspace, quiet=False)
+
   previous_action = None
   previous_game_state = None
   print("GAME START")
@@ -71,6 +74,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
   global vw, previous_action, previous_game_state
 
   actions = ["up", "down", "left", "right"]
+  # VowpalWabbit uses postive values to indicate loss, so negative values are the reward
   learn(actions, -1)
 
   action = get_action(game_state, actions)
@@ -104,14 +108,44 @@ def to_vw_example_format(game_state, actions, cb_label=None):
   board = game_state["board"]
   example_string = ""
 
+  #example_string = get_shared_features(game_state)
+
   if cb_label is not None:
     chosen_action, cost, prob = cb_label
-    #example_string += f"{chosen_action}:{cost}:{prob} "
 
-  example_string += "shared |"
+  grid = get_grid(game_state)
+  x = game_state["you"]["head"]["x"]
+  y = game_state["you"]["head"]["y"]
+  
+  for action in actions:
+    if cb_label is not None and action == chosen_action:
+      example_string += f"{action}:{cost}:{prob} "
+    example_string += "|Action article={} type={}\n".format(
+        action, get_val_from_action(action, x, y, grid))
+  # Strip the last newline
+  return example_string[:-1]
+
+
+def get_val_from_action(direction, x, y, grid):
+  if direction == "up":
+    return get_val_from_grid(x, y + 1, grid)
+  if direction == "down":
+    return get_val_from_grid(x, y - 1, grid)
+  if direction == "right":
+    return get_val_from_grid(x + 1, y, grid)
+  if direction == "left":
+    return get_val_from_grid(x - 1, y, grid)
+
+  raise Exception("INVALID DIRECTION") 
+
+
+# Returns a string that includes all shared features that we want to give the model
+def get_shared_features(game_state):
+  # Add board size features
+  example_string = "shared |"
   example_string += " height={} width={} ".format(board["height"],
                                                   board["width"])
-
+  # Add snake location features
   for snake in board["snakes"]:
     length = len(snake['body'])
     owner = "Your" if snake['id'] == game_state['you']['id'] else "Enemy"
@@ -120,16 +154,10 @@ def to_vw_example_format(game_state, actions, cb_label=None):
       x = snake['body'][i]['x']
       y = snake['body'][i]['y']
       body = "Head" if i == 0 else "Body"
-      #example_string += f"{owner}{body}X{i}={x} {owner}{body}{i}Y={y} "
       example_string += f"{owner}{body}{i}={x}x{y} "
 
   example_string += "\n"
-  for action in actions:
-    if cb_label is not None and action == chosen_action:
-      example_string += f"{action}:{cost}:{prob} "
-    example_string += "|Action article={} \n".format(action)
-  # Strip the last newline
-  return example_string[:-1]
+  return example_string
 
 
 def get_action(context, actions):
@@ -149,6 +177,31 @@ def sample_custom_pmf(pmf):
     sum_prob += prob
     if sum_prob > draw:
       return index, prob
+
+
+def get_grid(data):
+  # Generates a width x height array that holds strings indicating what is there
+  width = data['board']['width']
+  height = data['board']['height']
+  grid = [["empty" for x in range(width)] for y in range(height)]
+
+  for coord in data['board']['food']:
+    grid[coord['x']][coord['y']] = "food"
+
+  for snake in data['board']['snakes']:
+    length = len(snake['body'])
+    for i in range(length):
+      grid[snake['body'][i]['x']][snake['body'][i]['y']] = "snake"
+
+  return grid
+
+
+def get_val_from_grid(x, y, grid):
+  # Returns the value from the grid, otherwise if outside the grid return "edge"
+  if x < len(grid) and x >= 0 and y < len(grid[0]) and y >= 0:
+    return grid[x][y]
+
+  return "edge"
 
 
 # Start server when `python main.py` is run
