@@ -5,12 +5,6 @@ Configured to run on [Replit](https://replit.com/~).
 
 ## Run Your Battlesnake
 
-Install dependencies using pip
-
-```sh
-pip install -r requirements.txt
-```
-
 Start your Battlesnake
 
 ```sh
