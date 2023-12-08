@@ -50,10 +50,14 @@ def start(game_state: typing.Dict) -> None:
   global vw, previous_action, previous_game_state
 
   if vw == None:
+    # Epsilon is the chance the model will take a different action than its prescribed action
+    # -l indicates the learning rate
+    # cb_explore_adf indicates the contextual bandit algorithm for when the actions are known ahead of time and semantics stays the same 
     workspace = "--cb_explore_adf --quiet --epsilon {} -l {}".format(
         epsilon, learning_rate)
 
     if os.path.isfile("snake.model"):
+      # Tells vw to use an existing file for the model
       workspace += " -i snake.model"
       print("Using existing model")
     else:
@@ -84,6 +88,8 @@ def end(game_state: typing.Dict) -> None:
 def move(game_state: typing.Dict) -> typing.Dict:
   global vw, previous_action, previous_game_state
 
+  # Actions are strings and not enums because we don't want the model making numerical associations with each action
+  # since enums are ints and if up is 1 and down is 2, down should not be twice the value of up
   actions = ["up", "down", "left", "right"]
 
   # Also give the reward for the last move, since we now know the snake hasn't died
@@ -106,7 +112,8 @@ def get_cost(game_state: typing.Dict,
   cost = basic_reward
   
   if game_over:
-    # In a competitive game, the game ends if the other snakes have died
+    # In a competitive game, the game ends if at most one snake remains
+    # If we're dead, then we assign loss, otherwise we assign the basic value since it was essentially a normal move
     if snake_alive(game_state):
       return basic_reward
     return game_over_loss
@@ -148,25 +155,34 @@ def to_vw_example_format(game_state: typing.Dict,
                          actions: list[int],
                          cb_label: tuple[str, int, float] = None) -> str:
   board = game_state["board"]
+
+  # Shared features are essentially included in every example we provide
   example_string = "shared |"
   example_string += " health={}\n".format(game_state["you"]["health"])
 
-  if cb_label is not None:
-    chosen_action, cost, prob = cb_label
-
+  # It's not necessary to load the entire grid, but it's easier to visualize
   grid = get_grid(game_state)
   x = game_state["you"]["head"]["x"]
   y = game_state["you"]["head"]["y"]
 
+  # cb_label is the label for the last turn's action, and is how we train the model
+  if cb_label is not None:
+    chosen_action, cost, prob = cb_label
+    
   for action in actions:
+    # Assign the label to the action the snake took last turn (VW expects the label to come before the examples)
     if cb_label is not None and action == chosen_action:
       example_string += f"{action}:{cost}:{prob} "
+
+    # Assign the features to each action, VW expects each example to be an a separate line
     example_string += "|Action article={} type={}\n".format(
         action, get_val_from_action(action, x, y, grid))
+    
   # Strip the last newline
   return example_string[:-1]
 
 
+# Given an action, what is the object that the snake ran into
 def get_val_from_action(direction: str, x: int, y: int,
                         grid: list[list[int]]) -> str:
   if direction == "up":
@@ -183,6 +199,7 @@ def get_val_from_action(direction: str, x: int, y: int,
 
 def get_action(context: typing.Dict, actions: list[int]) -> tuple[str, float]:
   vw_text_example = to_vw_example_format(context, actions)
+  # VW returns a probability mass function when predicting
   pmf = vw.predict(vw_text_example)
   chosen_action_index, prob = sample_custom_pmf(pmf)
   return actions[chosen_action_index], prob
@@ -201,7 +218,7 @@ def sample_custom_pmf(pmf: list[float]) -> tuple[int, float]:
 
 
 def get_grid(data: typing.Dict) -> list[list[int]]:
-  # Generates a width x height array that holds strings indicating what is there
+  # Generates a width*height array that holds strings indicating what is there
   width = data['board']['width']
   height = data['board']['height']
   grid = [["empty" for x in range(width)] for y in range(height)]
